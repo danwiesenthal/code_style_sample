@@ -51,16 +51,22 @@ def _save_cache(cache: dict[str, list[float]]) -> None:
         json.dump(cache, f)
 
 
-def _embed_texts(texts: list[str]) -> np.ndarray:
-    """Call OpenAI API to embed texts. No caching.
+def _embed_texts(texts: list[str], batch_size: int = 20) -> np.ndarray:
+    """Call OpenAI API to embed texts in batches. No caching.
 
     Returns array of shape (n, embedding_dim).
     Uses float32 to reduce memory footprint (float64 unnecessary for similarity).
     """
     client = _get_client()
-    response = client.embeddings.create(model=EMBEDDING_MODEL, input=texts)
-    embeddings = [item.embedding for item in response.data]
-    return np.array(embeddings, dtype=np.float32)
+    all_embeddings = []
+
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        response = client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
+        batch_embeddings = [item.embedding for item in response.data]
+        all_embeddings.extend(batch_embeddings)
+
+    return np.array(all_embeddings, dtype=np.float32)
 
 
 def get_embeddings(prompts: list[str]) -> np.ndarray:
