@@ -16,6 +16,16 @@ uv sync
 
 # Run the experiment
 uv run python main.py
+
+# Run unit tests (skips integration tests, which call HuggingFace and OpenAI)
+uv run pytest tests/ -v -m "not integration"
+
+# Run all tests
+uv run pytest tests/ -v
+
+# Lint and check formatting
+uv run ruff check .
+uv run ruff format --check .
 ```
 
 Requires a `.env` file with `OPENAI_API_KEY` for embeddings.

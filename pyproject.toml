@@ -12,9 +12,16 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=7.0.0",
+    "ruff>=0.14.10",
 ]
 
 [tool.pytest.ini_options]
 markers = [
     "integration: calls an external service (HuggingFace or OpenAI)",
 ]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]

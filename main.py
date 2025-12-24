@@ -11,11 +11,11 @@ from evaluation import compute_accuracy, compute_baseline_accuracy
 from match_types import Outcome
 from ranker import DEFAULT_K
 from router import (
+    DEFAULT_N,
+    DEFAULT_P,
     EagleRouter,
     build_train_index,
     compute_global_ratings,
-    DEFAULT_N,
-    DEFAULT_P,
 )
 
 

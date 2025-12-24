@@ -1,7 +1,7 @@
 """Data access module for loading and sampling the SPROUT dataset."""
 
-from typing import Literal, Sequence
 import random
+from typing import Literal, Sequence
 
 from datasets import Dataset, load_dataset
 

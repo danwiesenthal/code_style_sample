@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from match_types import MatchRow, Outcome
 from elo import RatingPair
+from match_types import MatchRow, Outcome
 from ranker import DEFAULT_INIT_RATING, DEFAULT_K, compute_ratings
 from similarity import TrainIndex
 
@@ -83,11 +83,7 @@ class EagleRouter:
         )
 
         # Weighted combination: P * global + (1-P) * local
-        combined_a = (
-            self.p * self.global_ratings.a + (1 - self.p) * local_ratings.a
-        )
-        combined_b = (
-            self.p * self.global_ratings.b + (1 - self.p) * local_ratings.b
-        )
+        combined_a = self.p * self.global_ratings.a + (1 - self.p) * local_ratings.a
+        combined_b = self.p * self.global_ratings.b + (1 - self.p) * local_ratings.b
 
         return RatingPair(combined_a, combined_b)

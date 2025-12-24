@@ -9,7 +9,7 @@ import uuid
 import numpy as np
 import pytest
 
-from embeddings import get_embeddings, _load_cache, _prompt_hash
+from embeddings import _load_cache, _prompt_hash, get_embeddings
 
 pytestmark = pytest.mark.integration
 

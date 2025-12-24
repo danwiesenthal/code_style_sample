@@ -3,8 +3,8 @@
 Pure unit tests - no external dependencies.
 """
 
+from elo import RatingPair, _probability_a_beats_b, update_ratings
 from match_types import Outcome
-from elo import _probability_a_beats_b, update_ratings, RatingPair
 
 
 class TestProbabilityABeatsB:
