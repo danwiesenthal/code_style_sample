@@ -105,3 +105,31 @@ class TestPredict:
 
         query = np.array([1.0, 0.05])
         assert router.predict(query) == Outcome.WIN_A
+
+    def test_should_predict_tie_when_gap_is_within_tie_threshold(self):
+        """Should predict TIE when the rating gap is no bigger than tie_threshold."""
+        rng = np.random.default_rng(seed=0)
+        train_rows = [make_match(str(i), 1.0, 0.0) for i in range(10)]
+        router = make_router(
+            train_rows,
+            rng.standard_normal((10, 8)),
+            n_neighbors=3,
+            tie_threshold=1000.0,
+        )
+
+        query = rng.standard_normal(8)
+        assert router.predict(query) == Outcome.TIE
+
+    def test_should_predict_winner_when_gap_exceeds_tie_threshold(self):
+        """Should still predict the winner when the gap is bigger than tie_threshold."""
+        rng = np.random.default_rng(seed=0)
+        train_rows = [make_match(str(i), 1.0, 0.0) for i in range(10)]
+        router = make_router(
+            train_rows,
+            rng.standard_normal((10, 8)),
+            n_neighbors=3,
+            tie_threshold=1.0,
+        )
+
+        query = rng.standard_normal(8)
+        assert router.predict(query) == Outcome.WIN_A

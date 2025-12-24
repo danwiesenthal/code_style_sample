@@ -4,7 +4,7 @@ import numpy as np
 
 from match_types import MatchRow, Outcome
 from elo import RatingPair
-from ranker import compute_ratings, DEFAULT_K, DEFAULT_INIT_RATING
+from ranker import DEFAULT_INIT_RATING, DEFAULT_K, compute_ratings
 from similarity import TrainIndex
 
 # Paper hyperparameters (Appendix A)
@@ -36,6 +36,10 @@ class EagleRouter:
     compute_global_ratings() and build_train_index() (in either order).
     Building the ratings and index is the expensive part, so it happens in
     explicit calls rather than implicitly inside __init__.
+
+    Note: tie_threshold is an extension, not part of the original paper.
+    The paper simply picks the higher-rated model (no ties); the default
+    tie_threshold=0.0 matches that behavior.
     """
 
     def __init__(
@@ -45,22 +49,25 @@ class EagleRouter:
         k: float = DEFAULT_K,
         n_neighbors: int = DEFAULT_N,
         p: float = DEFAULT_P,
+        tie_threshold: float = 0.0,
     ) -> None:
         self.global_ratings = global_ratings
         self.train_index = train_index
         self.k = k
         self.n_neighbors = n_neighbors
         self.p = p
+        self.tie_threshold = tie_threshold
 
     def predict(self, query_embedding: np.ndarray) -> Outcome:
         """Predict which model wins for a query."""
         ratings = self._combined_ratings(query_embedding)
+        diff = ratings.a - ratings.b
 
-        if ratings.a > ratings.b:
+        if abs(diff) <= self.tie_threshold:
+            return Outcome.TIE
+        elif diff > 0:
             return Outcome.WIN_A
-        elif ratings.b > ratings.a:
-            return Outcome.WIN_B
-        return Outcome.TIE
+        return Outcome.WIN_B
 
     def _combined_ratings(self, query_embedding: np.ndarray) -> RatingPair:
         """Compute combined global + local ratings for a query."""
@@ -76,7 +83,11 @@ class EagleRouter:
         )
 
         # Weighted combination: P * global + (1-P) * local
-        combined_a = self.p * self.global_ratings.a + (1 - self.p) * local_ratings.a
-        combined_b = self.p * self.global_ratings.b + (1 - self.p) * local_ratings.b
+        combined_a = (
+            self.p * self.global_ratings.a + (1 - self.p) * local_ratings.a
+        )
+        combined_b = (
+            self.p * self.global_ratings.b + (1 - self.p) * local_ratings.b
+        )
 
         return RatingPair(combined_a, combined_b)
