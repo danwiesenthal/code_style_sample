@@ -7,16 +7,22 @@ import numpy as np
 from match_types import MatchRow
 
 
-@dataclass(eq=False)
+@dataclass(eq=False)  # No ==: comparing the embedding arrays would raise
 class TrainIndex:
-    """Training data indexed for similarity search.
+    """Training match rows indexed for similarity search.
 
-    Bundles rows and their embeddings together - they're parallel arrays
-    where index i in both refers to the same training example.
+    Bundles match rows and their embeddings together - they're parallel
+    arrays where index i in both refers to the same training match row.
+    In the shape comments, n is the number of training match rows and dim is
+    the embedding dimension.
+
+    Attributes:
+        match_rows: Training match rows
+        embeddings: Prompt embedding for each match row
     """
 
-    rows: list[MatchRow]
-    embeddings: np.ndarray  # shape (n, embedding_dim)
+    match_rows: list[MatchRow]
+    embeddings: np.ndarray  # (n, dim)
     _normed_embeddings: np.ndarray = field(init=False, repr=False)  # (n, dim)
 
     def __post_init__(self) -> None:
@@ -24,10 +30,10 @@ class TrainIndex:
 
         Called automatically by dataclass after __init__.
         """
-        if len(self.rows) != len(self.embeddings):
+        if len(self.match_rows) != len(self.embeddings):
             raise ValueError(
-                f"rows ({len(self.rows)}) and embeddings ({len(self.embeddings)}) "
-                "must have same length"
+                f"match_rows ({len(self.match_rows)}) and embeddings "
+                f"({len(self.embeddings)}) must have same length"
             )
         # Normalize embeddings for cosine similarity (dot product on unit vectors)
         # keepdims=True gives shape (n, 1) for broadcasting in division
@@ -39,10 +45,12 @@ class TrainIndex:
         query_embedding: np.ndarray,
         n_neighbors: int,
     ) -> list[MatchRow]:
-        """Return the n_neighbors most similar training rows by cosine similarity.
+        """Return the n_neighbors most similar training match rows.
+
+        Similarity is cosine similarity between prompt embeddings.
 
         Args:
-            query_embedding: Embedding vector for the query
+            query_embedding: Embedding vector for the query, shape (dim,)
             n_neighbors: Number of neighbors to return
 
         Returns:
@@ -57,4 +65,4 @@ class TrainIndex:
         # Get indices of the top n_neighbors (descending similarity)
         top_indices = np.argsort(similarities)[::-1][:n_neighbors]  # (n_neighbors,)
 
-        return [self.rows[i] for i in top_indices]
+        return [self.match_rows[i] for i in top_indices]

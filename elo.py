@@ -5,20 +5,23 @@ Standard Elo formula:
     R_A_new = R_A + K * (S_A - E_A)
 
 Where:
-    E_A = expected points (probability A wins)
+    E_A = probability that A wins, counting a tie as half a win
     S_A = points A actually earned (1=win, 0.5=tie, 0=loss)
     K = update sensitivity (higher = faster rating changes)
     400 = standard Elo scale factor
 
-The paper calls S the "actual score". This repo says "points" because
-"score" here only means a judge's score for a model's response.
+E_A is usually described as the probability that A wins. With ties counted
+as half a win, it's also the points A is expected to earn, which is why it's
+compared directly with S_A, the points A actually earned. The paper calls S
+the "actual score"; to avoid overloading "score", which here means a
+judge's score for a response, this repo calls it points.
 """
 
 from typing import NamedTuple
 
 from match_types import Outcome
 
-# Standard Elo scaling constant
+# Standard Elo scale factor
 SCALE = 400
 
 
@@ -30,7 +33,11 @@ class RatingPair(NamedTuple):
 
 
 def _probability_a_beats_b(ratings: RatingPair) -> float:
-    """Probability that player A beats player B given their ratings."""
+    """Probability that player A beats player B given their ratings.
+
+    A tie counts as half a win, so this is also the points A is expected to
+    earn from the match.
+    """
     return 1.0 / (1.0 + 10.0 ** ((ratings.b - ratings.a) / SCALE))
 
 
@@ -64,7 +71,7 @@ def update_ratings(
 
     Args:
         ratings: Current ratings of players A and B
-        outcome: Match result (WIN_A, WIN_B, or TIE)
+        outcome: Match outcome (WIN_A, WIN_B, or TIE)
         k: Elo K-factor (sensitivity, paper uses K=32)
 
     Returns:

@@ -49,13 +49,14 @@ Supporting modules:
 - `elo.py` - Core Elo math
 - `data_access.py` - SPROUT dataset loading
 - `match_types.py` - Match types shared across modules
+- `parameters.py` - The paper's hyperparameters, this repo's additions, and experiment settings
 
 ## Differences from the Paper
 
 - **Task and evaluation.** The paper ranks many models and picks the best one within a cost budget, evaluated on RouterBench by quality-versus-cost AUC. This repo predicts the outcome between two models on SPROUT and measures how often that prediction is right.
 - **Embedding model.** The paper uses stella_en_1.5B_v5. This repo uses Qwen3-Embedding-0.6B by default, or OpenAI's text-embedding-3-large.
 - **Order of Elo updates.** Elo weights later updates more, so the order matches are applied in matters, and the paper doesn't specify it. The local rating applies neighbors from least to most similar, so the most similar counts most. The global rating is one pass over the training matches in dataset order; the paper calls it an average Elo over all feedback without saying how it's averaged.
-- **Terms.** The paper calls Elo's S the "actual score" and the combined rating "Score(X)". Here "score" only means a judge's score for a response; S is "points", and the combination is the combined rating.
+- **Terms.** The paper uses "score" for both Elo's S (the "actual score") and the combined rating ("Score(X)"), and SPROUT uses it for a judge's score of each response. To avoid overloading "score", this repo uses it only for the judge's score, "points" for S (1 for a win, 0.5 for a tie, 0 for a loss), and "rating" for Elo ratings, including the combined rating.
 - **Tie threshold.** An addition to the paper, described below.
 
 ## Extension: Tie Threshold

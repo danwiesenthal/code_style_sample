@@ -1,5 +1,6 @@
 """Embeddings module for local Qwen or OpenAI embeddings with disk caching."""
 
+import functools
 import hashlib
 import json
 import os
@@ -19,31 +20,28 @@ EMBEDDING_MODELS: dict[EmbeddingBackend, str] = {
     "qwen": "Qwen/Qwen3-Embedding-0.6B",
     "openai": "text-embedding-3-large",
 }
+
+# Runs locally with no API key; OpenAI has to be selected explicitly
+DEFAULT_EMBEDDING_BACKEND: EmbeddingBackend = "qwen"
+
 CACHE_DIR = Path(__file__).parent / "cache"
 
-_client: OpenAI | None = None
-_qwen_model: "SentenceTransformer | None" = None
+
+@functools.cache
+def _get_openai_client() -> OpenAI:
+    """Create the OpenAI client once; later calls return the same client."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY environment variable not set")
+    return OpenAI(api_key=api_key)
 
 
-def _get_client() -> OpenAI:
-    """Get or create singleton OpenAI client."""
-    global _client
-    if _client is None:
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
-        _client = OpenAI(api_key=api_key)
-    return _client
-
-
+@functools.cache
 def _get_qwen_model() -> "SentenceTransformer":
-    """Get or load singleton local Qwen model. Downloads it on first use."""
-    global _qwen_model
-    if _qwen_model is None:
-        from sentence_transformers import SentenceTransformer
+    """Load the local Qwen model once (downloading it on first use)."""
+    from sentence_transformers import SentenceTransformer
 
-        _qwen_model = SentenceTransformer(EMBEDDING_MODELS["qwen"])
-    return _qwen_model
+    return SentenceTransformer(EMBEDDING_MODELS["qwen"])
 
 
 def _prompt_hash(prompt: str) -> str:
@@ -52,11 +50,10 @@ def _prompt_hash(prompt: str) -> str:
 
 
 def _cache_path(backend: EmbeddingBackend) -> Path:
-    """Get cache file path for a backend's model, creating directory if needed.
+    """Get the cache file path for a backend's model.
 
     One file per model, since embeddings from different models aren't comparable.
     """
-    CACHE_DIR.mkdir(exist_ok=True)
     model = EMBEDDING_MODELS[backend].replace("/", "--")
     return CACHE_DIR / f"{model}.json"
 
@@ -71,7 +68,8 @@ def _load_cache(backend: EmbeddingBackend) -> dict[str, list[float]]:
 
 
 def _save_cache(cache: dict[str, list[float]], backend: EmbeddingBackend) -> None:
-    """Save embedding cache to disk."""
+    """Save embedding cache to disk, creating the cache directory if needed."""
+    CACHE_DIR.mkdir(exist_ok=True)
     with open(_cache_path(backend), "w") as f:
         json.dump(cache, f)
 
@@ -83,28 +81,30 @@ def _embed_qwen_texts(texts: list[str], batch_size: int = 4) -> np.ndarray:
     letting the model silently truncate it. Small batches keep memory in check
     for long prompts.
 
-    Returns array of shape (n, embedding_dim).
+    Returns array of shape (n_texts, dim).
     """
     model = _get_qwen_model()
+
+    # No limit means the model won't truncate, so there's nothing to check
+    max_tokens = model.max_seq_length
     for text in texts:
         n_tokens = len(model.tokenizer(text, truncation=False)["input_ids"])
-        if n_tokens > model.max_seq_length:
+        if max_tokens is not None and n_tokens > max_tokens:
             raise ValueError(
-                f"Prompt has {n_tokens} tokens, over the model's limit of "
-                f"{model.max_seq_length}"
+                f"Prompt has {n_tokens} tokens, over the model's limit of {max_tokens}"
             )
 
-    embeddings = model.encode(texts, batch_size=batch_size)
+    embeddings = model.encode(texts, batch_size=batch_size)  # (n_texts, dim)
     return np.asarray(embeddings, dtype=np.float32)
 
 
 def _embed_openai_texts(texts: list[str], batch_size: int = 20) -> np.ndarray:
     """Call OpenAI API to embed texts in batches. No caching.
 
-    Returns array of shape (n, embedding_dim).
+    Returns array of shape (n_texts, dim).
     Uses float32 to reduce memory footprint (float64 unnecessary for similarity).
     """
-    client = _get_client()
+    client = _get_openai_client()
     all_embeddings = []
 
     for i in range(0, len(texts), batch_size):
@@ -120,41 +120,35 @@ def _embed_openai_texts(texts: list[str], batch_size: int = 20) -> np.ndarray:
 
 def get_embeddings(
     prompts: list[str],
-    backend: EmbeddingBackend = "qwen",
+    backend: EmbeddingBackend = DEFAULT_EMBEDDING_BACKEND,
 ) -> np.ndarray:
     """Get embeddings for prompts, cached by prompt content hash.
 
     Uses the local Qwen model unless OpenAI is selected explicitly; having
-    OPENAI_API_KEY set doesn't change the default.
-    Cache is checked first; only missing prompts are embedded.
-    Returns array of shape (n, embedding_dim) in same order as input prompts.
+    OPENAI_API_KEY set doesn't change the default. Only prompts missing from
+    the cache are embedded, and each one only once, even if it repeats.
+
+    Args:
+        prompts: Prompts to embed
+        backend: Which embedding model to use
+
+    Returns:
+        Array of shape (n_prompts, dim), in the same order as prompts
     """
     cache = _load_cache(backend)
 
-    # Check cache, track what needs embedding
-    prompt_hashes = [_prompt_hash(p) for p in prompts]
-    cached_embeddings: dict[str, np.ndarray] = {}
-    to_embed: list[tuple[str, str]] = []  # (hash, prompt)
+    # Prompts not in the cache yet, each listed once, in first-seen order
+    missing = list(dict.fromkeys(p for p in prompts if _prompt_hash(p) not in cache))
 
-    for h, prompt in zip(prompt_hashes, prompts):
-        if h in cache:
-            cached_embeddings[h] = np.array(cache[h], dtype=np.float32)
-        else:
-            to_embed.append((h, prompt))
-
-    # Embed missing prompts with the selected backend
-    if to_embed:
-        new_prompts = [prompt for _, prompt in to_embed]
+    if missing:
         if backend == "qwen":
-            new_embeddings = _embed_qwen_texts(new_prompts)
+            new_embeddings = _embed_qwen_texts(missing)  # (n_missing, dim)
         else:
-            new_embeddings = _embed_openai_texts(new_prompts)
+            new_embeddings = _embed_openai_texts(missing)  # (n_missing, dim)
 
-        for (h, _), emb in zip(to_embed, new_embeddings, strict=True):
-            cache[h] = emb.tolist()
-            cached_embeddings[h] = emb
-
+        for prompt, embedding in zip(missing, new_embeddings, strict=True):
+            cache[_prompt_hash(prompt)] = embedding.tolist()
         _save_cache(cache, backend)
 
-    # Reconstruct in original order
-    return np.array([cached_embeddings[h] for h in prompt_hashes], dtype=np.float32)
+    # Read every prompt's embedding back from the cache, in input order
+    return np.array([cache[_prompt_hash(p)] for p in prompts], dtype=np.float32)

@@ -12,9 +12,16 @@ class Outcome(str, Enum):
     TIE = "tie"
 
 
-@dataclass
+@dataclass(frozen=True)
 class MatchRow:
-    """One prompt and both models' scores for their responses to it."""
+    """One prompt and both models' scores for their responses to it.
+
+    Attributes:
+        row_id: Dataset key for the prompt
+        prompt: The prompt both models answered
+        score_a: Judge's score for model A's response
+        score_b: Judge's score for model B's response
+    """
 
     row_id: str
     prompt: str

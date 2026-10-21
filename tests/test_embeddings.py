@@ -19,7 +19,7 @@ def temporary_cache(monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def fake_backends(monkeypatch):
+def embedded_prompts(monkeypatch):
     """Replace both backends with fakes that record the prompts they embed.
 
     Fake vectors are [backend id, prompt length]: Qwen's id is 1, OpenAI's is 2.
@@ -29,7 +29,8 @@ def fake_backends(monkeypatch):
     def fake(backend, backend_id):
         def embed(texts):
             embedded[backend].extend(texts)
-            return np.array([[backend_id, len(t)] for t in texts], dtype=np.float32)
+            vectors = [[backend_id, len(t)] for t in texts]
+            return np.array(vectors, dtype=np.float32)  # (n_texts, 2)
 
         return embed
 
@@ -41,37 +42,45 @@ def fake_backends(monkeypatch):
 class TestGetEmbeddings:
     """Tests for caching and backend selection, using fake backends."""
 
-    def test_should_embed_only_prompts_missing_from_cache(self, fake_backends):
+    def test_should_embed_only_prompts_missing_from_cache(self, embedded_prompts):
         """Should embed each prompt once, reusing cached vectors after that."""
         get_embeddings(["a", "bb"])
         get_embeddings(["bb", "ccc", "a"])
 
-        assert fake_backends["qwen"] == ["a", "bb", "ccc"]
+        assert embedded_prompts["qwen"] == ["a", "bb", "ccc"]
 
-    def test_should_return_vectors_in_prompt_order(self, fake_backends):
+    def test_should_embed_repeated_prompt_once(self, embedded_prompts):
+        """Should embed a prompt once even when it repeats within one call."""
+        get_embeddings(["a", "a", "bb"])
+
+        assert embedded_prompts["qwen"] == ["a", "bb"]
+
+    def test_should_return_vectors_in_prompt_order(self, embedded_prompts):
         """Should line up cached and newly embedded vectors with the input order."""
         get_embeddings(["a", "bb"])
 
-        result = get_embeddings(["bb", "ccc", "a"])
+        result = get_embeddings(["bb", "ccc", "a", "bb"])  # (4, 2)
 
-        np.testing.assert_array_equal(result, [[1.0, 2.0], [1.0, 3.0], [1.0, 1.0]])
+        np.testing.assert_array_equal(
+            result, [[1.0, 2.0], [1.0, 3.0], [1.0, 1.0], [1.0, 2.0]]
+        )
 
     def test_should_default_to_qwen_when_openai_key_is_set(
-        self, fake_backends, monkeypatch
+        self, embedded_prompts, monkeypatch
     ):
         """Should use the local model unless OpenAI is selected explicitly."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
         get_embeddings(["a"])
 
-        assert fake_backends == {"qwen": ["a"], "openai": []}
+        assert embedded_prompts == {"qwen": ["a"], "openai": []}
 
-    def test_should_keep_each_backends_cache_separate(self, fake_backends):
+    def test_should_keep_each_backends_cache_separate(self, embedded_prompts):
         """Should never return one backend's cached vectors for the other."""
         qwen = get_embeddings(["a"])
         openai = get_embeddings(["a"], backend="openai")
 
-        assert fake_backends == {"qwen": ["a"], "openai": ["a"]}
+        assert embedded_prompts == {"qwen": ["a"], "openai": ["a"]}
         assert not np.array_equal(qwen, openai)
 
 
