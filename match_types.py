@@ -1,10 +1,10 @@
 """Match types shared across modules: one prompt scored for both models."""
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class Outcome(str, Enum):
+class Outcome(StrEnum):
     """Result of a match between models A and B."""
 
     WIN_A = "win_a"

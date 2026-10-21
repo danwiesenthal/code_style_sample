@@ -37,7 +37,7 @@ def _get_openai_client() -> OpenAI:
 
 
 @functools.cache
-def _get_qwen_model() -> "SentenceTransformer":
+def _get_qwen_model() -> SentenceTransformer:
     """Load the local Qwen model once (downloading it on first use)."""
     from sentence_transformers import SentenceTransformer
 
@@ -62,7 +62,7 @@ def _load_cache(backend: EmbeddingBackend) -> dict[str, list[float]]:
     """Load embedding cache from disk. Keyed by prompt hash."""
     path = _cache_path(backend)
     if path.exists():
-        with open(path) as f:
+        with path.open() as f:
             return json.load(f)
     return {}
 
@@ -70,7 +70,7 @@ def _load_cache(backend: EmbeddingBackend) -> dict[str, list[float]]:
 def _save_cache(cache: dict[str, list[float]], backend: EmbeddingBackend) -> None:
     """Save embedding cache to disk, creating the cache directory if needed."""
     CACHE_DIR.mkdir(exist_ok=True)
-    with open(_cache_path(backend), "w") as f:
+    with _cache_path(backend).open("w") as f:
         json.dump(cache, f)
 
 

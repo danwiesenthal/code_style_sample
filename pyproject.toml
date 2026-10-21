@@ -35,4 +35,28 @@ markers = [
 line-length = 88
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W"]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # Pyflakes: unused imports, undefined names
+    "I",  # import order
+    "UP",  # current Python syntax
+    "B",  # likely bugs
+    "SIM",  # simpler code
+    "C4",  # comprehensions
+    "RUF",  # ruff's own checks
+    "PT",  # pytest conventions
+    "N",  # PEP 8 naming
+    "D",  # docstrings
+    "PTH",  # pathlib for file paths
+]
+ignore = [
+    "D107",  # __init__ arguments are documented in the class docstring
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-bugbear]
+# Immutable, so safe to use as default argument values
+extend-immutable-calls = ["elo.RatingPair"]
