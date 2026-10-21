@@ -60,7 +60,7 @@ Supporting modules:
 
 ## Extension: Tie Threshold
 
-The paper's router always picks whichever model has the higher combined rating, so it never predicts a tie. When the two models often score the same on a prompt, each of those ties counts as a miss.
+The paper's router always picks whichever model has the higher combined rating, so it never predicts a tie. On SPROUT, gpt-4o and gpt-4o-mini score the same on about 78% of prompts, and each of those ties counts as a miss.
 
 This repo extends the paper with a `tie_threshold` parameter, which predicts TIE when the rating difference is within the threshold. The default of 0 matches the paper's behavior, and `main.py` tunes it alongside P on the validation set. Tuning only keeps a setting if it beats always predicting a tie on the validation set.
 
