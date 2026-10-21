@@ -77,6 +77,34 @@ The paper's settings almost never predict a tie, so they can only be right on th
 
 Accuracy here counts exact outcomes. A router that only has to pick a model could count a tie and a gpt-4o-mini win the same, since either way the cheaper model is good enough.
 
+Example output from `uv run python main.py`:
+
+```text
+Loading and sampling data...
+  Train: 2000, Val: 200, Test: 200
+  Train outcomes: {<Outcome.TIE: 'tie'>: 1568, <Outcome.WIN_B: 'win_b'>: 179, <Outcome.WIN_A: 'win_a'>: 253}
+
+Embedding prompts with Qwen/Qwen3-Embedding-0.6B...
+  Embedding dim: 1024
+
+Building router...
+  Global ratings: A=1504.93, B=1495.07
+
+Tuning P and tie_threshold on validation set...
+  No setting beat always predicting a tie (74.50%)
+
+Evaluating on test set...
+  Always predicting tie: 78.50%
+  Paper P=0.5: 12.50%
+
+========================================
+RESULTS
+========================================
+Test accuracy (always tie): 78.50%
+Test accuracy (paper P=0.5): 12.50%
+Tuned: no setting beat always predicting a tie on validation
+```
+
 ## License
 
 MIT - see [LICENSE](LICENSE).
