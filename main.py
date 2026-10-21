@@ -71,8 +71,14 @@ def run_experiment(
     # A setting has to beat always predicting a tie, the most common outcome
     best_p, best_tie_threshold = None, None
     best_val_acc = compute_baseline_accuracy(val_rows, Outcome.TIE)
+    print(f"  Always predicting tie: {best_val_acc:.2%}")
+
+    # One row per P, one column per tie_threshold
+    print("  Validation accuracy by P (rows) and tie_threshold (columns):")
+    print("     P" + "".join(f"{t:>7}" for t in tie_threshold_values))
 
     for p in p_values:
+        row_accs = []
         for tie_threshold in tie_threshold_values:
             router = EagleRouter(
                 global_ratings,
@@ -83,11 +89,13 @@ def run_experiment(
                 tie_threshold=tie_threshold,
             )
             val_acc = compute_accuracy(router, val_rows, val_emb)
+            row_accs.append(val_acc)
             if val_acc > best_val_acc:
                 best_p, best_tie_threshold, best_val_acc = p, tie_threshold, val_acc
+        print(f"  {p:4.2f}" + "".join(f"{acc:7.1%}" for acc in row_accs))
 
     if best_p is None:
-        print(f"  No setting beat always predicting a tie ({best_val_acc:.2%})")
+        print("  No setting beat always predicting a tie")
     else:
         print(f"  Best P: {best_p:.2f}, tie_threshold: {best_tie_threshold}")
         print(f"  Validation accuracy: {best_val_acc:.2%}")
