@@ -6,7 +6,12 @@ from collections import Counter
 import numpy as np
 from dotenv import load_dotenv
 
-from data_access import get_sampled_splits
+from data_access import (
+    DEFAULT_TEST_N,
+    DEFAULT_TRAIN_N,
+    DEFAULT_VAL_N,
+    get_sampled_splits,
+)
 from embeddings import EMBEDDING_MODELS, EmbeddingBackend, get_embeddings
 from evaluation import compute_accuracy, compute_baseline_accuracy
 from match_types import Outcome
@@ -23,9 +28,9 @@ from router import (
 def run_experiment(
     seed: int = 42,
     embedding_backend: EmbeddingBackend = "qwen",
-    train_n: int = 1200,
-    val_n: int = 600,
-    test_n: int = 600,
+    train_n: int = DEFAULT_TRAIN_N,
+    val_n: int = DEFAULT_VAL_N,
+    test_n: int = DEFAULT_TEST_N,
 ) -> None:
     """Run full EAGLE experiment.
 
@@ -219,14 +224,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--train-n",
         type=int,
-        default=1200,
-        help="Training sample size (default: 1200).",
+        default=DEFAULT_TRAIN_N,
+        help="Training sample size (default: %(default)s).",
     )
     parser.add_argument(
-        "--val-n", type=int, default=600, help="Validation sample size (default: 600)."
+        "--val-n",
+        type=int,
+        default=DEFAULT_VAL_N,
+        help="Validation sample size (default: %(default)s).",
     )
     parser.add_argument(
-        "--test-n", type=int, default=600, help="Test sample size (default: 600)."
+        "--test-n",
+        type=int,
+        default=DEFAULT_TEST_N,
+        help="Test sample size (default: %(default)s).",
     )
     args = parser.parse_args()
     run_experiment(

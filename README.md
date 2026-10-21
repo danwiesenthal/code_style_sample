@@ -68,22 +68,22 @@ The search uses 21 evenly spaced P values and zero plus 61 logarithmically space
 
 ## Results
 
-The experiment uses 1200 train, 600 validation and 600 test prompts from SPROUT, with Qwen3-Embedding-0.6B embeddings and seed 42. Each sample comes from its corresponding official dataset split; tuning uses only validation outcomes.
+On 1200 train, 600 validation and 600 test prompts, each sampled from the matching SPROUT split, with Qwen3-Embedding-0.6B embeddings and seed 42:
 
 | Router | Test accuracy |
 |---|---|
-| Paper settings on SPROUT (P=0.5, no tie threshold) | 13.8% |
-| Tuned P with no tie threshold (P=0.00) | 15.5% |
-| Tuned P and tie_threshold (P=0.10, tie_threshold=79.4328) | 74.3% |
+| Paper settings (P=0.5, no tie threshold) | 13.8% |
+| Tuned P, no tie threshold (P=0.00) | 15.5% |
+| Tuned P and tie_threshold (P=0.10, tie_threshold=79.4) | 74.3% |
 | Always predict a tie | 74.7% |
 
-The paper evaluates model selection on RouterBench by quality-versus-cost AUC. Its fixed settings are P=0.5, 20 neighbors and K=32 ([Appendix A](https://arxiv.org/html/2409.15518v2#A1)). The first row applies those settings here on SPROUT; it is not the paper's published result. All rows above measure exact outcome accuracy: A wins, B wins, or tie.
+The first row applies the paper's settings (P=0.5, N=20, K=32, from its [Appendix A](https://arxiv.org/html/2409.15518v2#A1)) to this task. It isn't a result from the paper, which measures quality-versus-cost AUC on RouterBench.
 
-Without a tie threshold, tuning P improves test accuracy from 13.8% to 15.5%. Once tie predictions are allowed, tuning selects P=0.10 and tie_threshold=79.4328: it gets 467 of 600 validation outcomes right, versus 465 for always predicting a tie (77.8% versus 77.5%). On test, that small advantage reverses: the tuned router gets 446 of 600 right, versus 448 for always predicting a tie (74.3% versus 74.7%).
+Without a tie threshold, the router almost never predicts a tie, so it can only be right on the quarter of test prompts that one model wins. Tuning P helps a little, from 13.8% to 15.5%. With the threshold, the best setting gets 467 of 600 validation prompts right, against 465 for always predicting a tie, then 446 against 448 on test. On this data, nothing beats always predicting a tie.
 
-The strong always-tie baseline reflects how similar these two models' recorded scores are on this dataset: they tie on 448 of the 600 test prompts. Allowing TIE as an answer makes that common outcome easy to predict. This result does not establish that EAGLE is broken or that routing is unhelpful for other model pairs or datasets. It shows that these tuned settings do not beat the tie baseline on this sample under exact-outcome accuracy.
+That's mostly a property of this data and this model pair. gpt-4o and gpt-4o-mini score the same on three quarters of these prompts, so a tie is hard to beat, and with 600 validation and test prompts a two-prompt gap is noise. With two models that differ more, ties would be rarer, always predicting a tie would be a much weaker baseline, and the router would have more wins and losses to learn from. Presumably always predicting a tie wouldn't come out on top there.
 
-A router that only has to choose a model has a different objective. On a tied prompt, choosing gpt-4o-mini preserves the recorded score at lower cost, even though predicting "B wins" would be wrong under this metric.
+Accuracy here counts exact outcomes: A wins, B wins, or tie. A router that only has to choose a model would treat a tie like a gpt-4o-mini win, since on those prompts the cheaper model is just as good.
 
 Example output from `uv run python main.py`:
 

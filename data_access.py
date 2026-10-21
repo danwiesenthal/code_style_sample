@@ -16,6 +16,11 @@ MODEL_B: ModelId = "openai-gpt-4o-mini"
 # prompt, and a column per model holding its response and judge score.
 DATASET_ID = "CARROT-LLM-Routing/SPROUT"
 
+# Default sample sizes, drawn from the train/validation/test splits
+DEFAULT_TRAIN_N = 1200
+DEFAULT_VAL_N = 600
+DEFAULT_TEST_N = 600
+
 
 def load_splits() -> tuple[list[MatchRow], list[MatchRow], list[MatchRow]]:
     """Load train, val, test splits from HuggingFace."""
@@ -51,9 +56,9 @@ def sample_rows(rows: Sequence[MatchRow], n: int, seed: int = 42) -> list[MatchR
 
 
 def get_sampled_splits(
-    train_n: int = 2000,
-    val_n: int = 200,
-    test_n: int = 200,
+    train_n: int = DEFAULT_TRAIN_N,
+    val_n: int = DEFAULT_VAL_N,
+    test_n: int = DEFAULT_TEST_N,
     seed: int = 42,
 ) -> tuple[list[MatchRow], list[MatchRow], list[MatchRow]]:
     """Load splits and sample to specified sizes."""
