@@ -72,6 +72,17 @@ def run_experiment(
     train_index = build_train_index(train_rows, train_emb)
     print(f"  Global ratings: A={global_ratings.a:.2f}, B={global_ratings.b:.2f}")
 
+    def make_router(p: float, tie_threshold: float) -> EagleRouter:
+        """Router over the training data; only P and tie_threshold vary."""
+        return EagleRouter(
+            global_ratings,
+            train_index,
+            k=DEFAULT_K,
+            n_neighbors=DEFAULT_N,
+            p=p,
+            tie_threshold=tie_threshold,
+        )
+
     # -------------------------------------------------------------------------
     # 4. Tune P and tie_threshold on validation set
     # -------------------------------------------------------------------------
@@ -85,12 +96,7 @@ def run_experiment(
         f"({len(p_values) * len(tie_threshold_values):,} settings)"
     )
 
-    # Track the best grid setting separately from the always-tie baseline
     val_acc_always_tie = compute_baseline_accuracy(val_rows, Outcome.TIE)
-    best_p_no_threshold = p_values[0]
-    best_val_acc_no_threshold = -1.0
-    best_p, best_tie_threshold = p_values[0], tie_threshold_values[0]
-    best_val_acc = -1.0
     print(f"  Always predicting tie: {val_acc_always_tie:.2%}")
 
     # One row per P, with selected thresholds from the full search grid
@@ -102,27 +108,26 @@ def run_experiment(
         )
     )
 
+    val_acc_rows = []
     for p in p_values:
-        row_accs = []
-        for tie_threshold in tie_threshold_values:
-            router = EagleRouter(
-                global_ratings,
-                train_index,
-                k=DEFAULT_K,
-                n_neighbors=DEFAULT_N,
-                p=p,
-                tie_threshold=tie_threshold,
-            )
-            val_acc = compute_accuracy(router, val_rows, val_emb)
-            row_accs.append(val_acc)
-            if tie_threshold == 0 and val_acc > best_val_acc_no_threshold:
-                best_p_no_threshold, best_val_acc_no_threshold = p, val_acc
-            if val_acc > best_val_acc:
-                best_p, best_tie_threshold, best_val_acc = p, tie_threshold, val_acc
+        row_accs = [
+            compute_accuracy(make_router(p, tie_threshold), val_rows, val_emb)
+            for tie_threshold in tie_threshold_values
+        ]
+        val_acc_rows.append(row_accs)
         print(
             f"  {p:4.2f}"
             + "".join(f"{row_accs[i]:7.1%}" for i in displayed_threshold_indices)
         )
+    val_accs = np.array(val_acc_rows)  # (n_p_values, n_tie_thresholds)
+
+    # Best P with no tie threshold (column 0), then best P and tie_threshold.
+    # argmax keeps the first best, in the order the grid was searched.
+    i = np.argmax(val_accs[:, 0])
+    best_p_no_threshold, best_val_acc_no_threshold = p_values[i], val_accs[i, 0]
+    i, j = np.unravel_index(np.argmax(val_accs), val_accs.shape)
+    best_p, best_tie_threshold = p_values[i], tie_threshold_values[j]
+    best_val_acc = val_accs[i, j]
 
     print(f"  Best P with no tie threshold: {best_p_no_threshold:.2f}")
     print(f"  Validation accuracy (no tie threshold): {best_val_acc_no_threshold:.2%}")
@@ -143,27 +148,13 @@ def run_experiment(
     test_acc_always_tie = compute_baseline_accuracy(test_rows, Outcome.TIE)
     print(f"  Always predicting tie: {test_acc_always_tie:.2%}")
 
-    # With paper hyperparams, evaluated here on SPROUT
-    router_paper = EagleRouter(
-        global_ratings,
-        train_index,
-        k=DEFAULT_K,
-        n_neighbors=DEFAULT_N,
-        p=DEFAULT_P,
-        tie_threshold=0,
-    )
+    # Paper settings, evaluated here on SPROUT
+    router_paper = make_router(DEFAULT_P, tie_threshold=0.0)
     test_acc_paper = compute_accuracy(router_paper, test_rows, test_emb)
     print(f"  Paper P={DEFAULT_P}, no tie threshold: {test_acc_paper:.2%}")
 
-    # With P selected on validation and no tie threshold
-    router_tuned_no_threshold = EagleRouter(
-        global_ratings,
-        train_index,
-        k=DEFAULT_K,
-        n_neighbors=DEFAULT_N,
-        p=best_p_no_threshold,
-        tie_threshold=0,
-    )
+    # P tuned on validation, with no tie threshold
+    router_tuned_no_threshold = make_router(best_p_no_threshold, tie_threshold=0.0)
     test_acc_tuned_no_threshold = compute_accuracy(
         router_tuned_no_threshold, test_rows, test_emb
     )
@@ -172,15 +163,8 @@ def run_experiment(
         f"{test_acc_tuned_no_threshold:.2%}"
     )
 
-    # With the best hyperparams from validation
-    router_tuned = EagleRouter(
-        global_ratings,
-        train_index,
-        k=DEFAULT_K,
-        n_neighbors=DEFAULT_N,
-        p=best_p,
-        tie_threshold=best_tie_threshold,
-    )
+    # P and tie_threshold tuned on validation
+    router_tuned = make_router(best_p, best_tie_threshold)
     test_acc_tuned = compute_accuracy(router_tuned, test_rows, test_emb)
     print(
         f"  Tuned P={best_p:.2f}, tie_threshold={best_tie_threshold:.6g}: "
