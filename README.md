@@ -64,6 +64,19 @@ The paper's router always picks whichever model has the higher combined rating, 
 
 This repo extends the paper with a `tie_threshold` parameter, which predicts TIE when the rating difference is within the threshold. The default of 0 matches the paper's behavior, and `main.py` tunes it alongside P on the validation set. Tuning only keeps a setting if it beats always predicting a tie on the validation set.
 
+## Results
+
+On SPROUT, with 2000 train, 200 validation and 200 test prompts and Qwen embeddings:
+
+| Router | Test accuracy |
+|---|---|
+| Always predict a tie | 78.5% |
+| Paper settings (P=0.5, no tie threshold) | 12.5% |
+
+The paper's settings almost never predict a tie, so they can only be right on the prompts where one model wins. No combination of P and tie_threshold beat always predicting a tie on the validation set, so on this data the router doesn't improve on that baseline.
+
+Accuracy here counts exact outcomes. A router that only has to pick a model could count a tie and a gpt-4o-mini win the same, since either way the cheaper model is good enough.
+
 ## License
 
 MIT - see [LICENSE](LICENSE).
