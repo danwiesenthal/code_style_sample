@@ -1,12 +1,13 @@
 """Main entry point - run EAGLE router experiment."""
 
+import argparse
 from collections import Counter
 
 import numpy as np
 from dotenv import load_dotenv
 
 from data_access import get_sampled_splits
-from embeddings import get_embeddings
+from embeddings import EMBEDDING_MODELS, EmbeddingBackend, get_embeddings
 from evaluation import compute_accuracy, compute_baseline_accuracy
 from match_types import Outcome
 from ranker import DEFAULT_K
@@ -19,7 +20,9 @@ from router import (
 )
 
 
-def run_experiment(seed: int = 42) -> None:
+def run_experiment(
+    seed: int = 42, embedding_backend: EmbeddingBackend = "qwen"
+) -> None:
     """Run full EAGLE experiment.
 
     Steps:
@@ -43,10 +46,10 @@ def run_experiment(seed: int = 42) -> None:
     # -------------------------------------------------------------------------
     # 2. Embed prompts
     # -------------------------------------------------------------------------
-    print("\nEmbedding prompts...")
-    train_emb = get_embeddings([r.prompt for r in train_rows])
-    val_emb = get_embeddings([r.prompt for r in val_rows])
-    test_emb = get_embeddings([r.prompt for r in test_rows])
+    print(f"\nEmbedding prompts with {EMBEDDING_MODELS[embedding_backend]}...")
+    train_emb = get_embeddings([r.prompt for r in train_rows], embedding_backend)
+    val_emb = get_embeddings([r.prompt for r in val_rows], embedding_backend)
+    test_emb = get_embeddings([r.prompt for r in test_rows], embedding_backend)
     print(f"  Embedding dim: {train_emb.shape[1]}")
 
     # -------------------------------------------------------------------------
@@ -138,4 +141,12 @@ def run_experiment(seed: int = 42) -> None:
 
 if __name__ == "__main__":
     load_dotenv()
-    run_experiment()
+    parser = argparse.ArgumentParser(description="Run the EAGLE router experiment.")
+    parser.add_argument(
+        "--embedding-backend",
+        choices=list(EMBEDDING_MODELS),
+        default="qwen",
+        help="Embedding backend (default: qwen, runs locally).",
+    )
+    args = parser.parse_args()
+    run_experiment(embedding_backend=args.embedding_backend)

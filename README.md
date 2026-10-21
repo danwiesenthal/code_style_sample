@@ -17,25 +17,25 @@ uv sync
 # Run the experiment
 uv run python main.py
 
-# Run unit tests (skips integration tests, which call HuggingFace and OpenAI)
+# Run unit tests (skips integration tests, which download data and models)
 uv run pytest tests/ -v -m "not integration"
 
-# Run all tests
-uv run pytest tests/ -v
+# Run integration tests, except ones that call the paid OpenAI API
+uv run pytest tests/ -v -m "integration and not openai"
 
 # Lint and check formatting
 uv run ruff check .
 uv run ruff format --check .
 ```
 
-Requires a `.env` file with `OPENAI_API_KEY` for embeddings.
+Embeddings come from [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B), which runs locally and downloads on first use. To use OpenAI's text-embedding-3-large instead, add `OPENAI_API_KEY` to a `.env` file and run `uv run python main.py --embedding-backend openai`.
 
 ## Project Structure
 
 Start with `main.py` - it runs the full experiment:
 
 1. Loads SPROUT and samples 2000 train, 200 val, and 200 test rows, to keep embedding time short
-2. Embeds prompts using OpenAI text-embedding-3-large
+2. Embeds prompts using Qwen3-Embedding-0.6B (or OpenAI text-embedding-3-large)
 3. Builds the EAGLE router from training data
 4. Tunes P and tie_threshold on the validation set
 5. Reports test accuracy, next to the accuracy of always predicting a tie
@@ -43,7 +43,7 @@ Start with `main.py` - it runs the full experiment:
 Supporting modules:
 - `router.py` - EAGLE router combining global and local Elo ratings
 - `evaluation.py` - Accuracy computation
-- `embeddings.py` - OpenAI embeddings with disk caching
+- `embeddings.py` - Qwen or OpenAI embeddings with disk caching
 - `similarity.py` - Nearest neighbor retrieval
 - `ranker.py` - Elo rating computation from match sequences
 - `elo.py` - Core Elo math
@@ -53,7 +53,7 @@ Supporting modules:
 ## Differences from the Paper
 
 - **Task and evaluation.** The paper ranks many models and picks the best one within a cost budget, evaluated on RouterBench by quality-versus-cost AUC. This repo predicts the outcome between two models on SPROUT and measures how often that prediction is right.
-- **Embedding model.** The paper uses stella_en_1.5B_v5. This repo uses OpenAI's text-embedding-3-large.
+- **Embedding model.** The paper uses stella_en_1.5B_v5. This repo uses Qwen3-Embedding-0.6B by default, or OpenAI's text-embedding-3-large.
 - **Order of Elo updates.** Elo weights later updates more, so the order matches are applied in matters, and the paper doesn't specify it. The local rating applies neighbors from least to most similar, so the most similar counts most. The global rating is one pass over the training matches in dataset order; the paper calls it an average Elo over all feedback without saying how it's averaged.
 - **Terms.** The paper calls Elo's S the "actual score" and the combined rating "Score(X)". Here "score" only means a judge's score for a response; S is "points", and the combination is the combined rating.
 - **Tie threshold.** An addition to the paper, described below.
