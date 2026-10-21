@@ -21,24 +21,30 @@ from router import (
 
 
 def run_experiment(
-    seed: int = 42, embedding_backend: EmbeddingBackend = "qwen"
+    seed: int = 42,
+    embedding_backend: EmbeddingBackend = "qwen",
+    train_n: int = 1200,
+    val_n: int = 600,
+    test_n: int = 600,
 ) -> None:
     """Run full EAGLE experiment.
 
     Steps:
-        1. Load and sample data (2000 train, 200 val, 200 test)
+        1. Load and sample data to the requested split sizes
         2. Embed all prompts
         3. Build router from training data
-        4. Tune P and tie_threshold on validation set
-        5. Report test accuracy for always predicting a tie, paper P, and tuned
-           settings if any beat that baseline
+        4. Tune P with no tie threshold and P with tie_threshold on validation
+        5. Report SPROUT test accuracy for always predicting a tie, paper settings,
+           tuned P with no tie threshold, and tuned P and tie_threshold
     """
 
     # -------------------------------------------------------------------------
     # 1. Load data
     # -------------------------------------------------------------------------
     print("Loading and sampling data...")
-    train_rows, val_rows, test_rows = get_sampled_splits(seed=seed)
+    train_rows, val_rows, test_rows = get_sampled_splits(
+        train_n=train_n, val_n=val_n, test_n=test_n, seed=seed
+    )
     print(f"  Train: {len(train_rows)}, Val: {len(val_rows)}, Test: {len(test_rows)}")
 
     train_outcomes = Counter(r.outcome for r in train_rows)
@@ -66,16 +72,30 @@ def run_experiment(
     # -------------------------------------------------------------------------
     print("\nTuning P and tie_threshold on validation set...")
     p_values = np.linspace(0, 1, 21)  # 0.0, 0.05, ..., 1.0
-    tie_threshold_values = [0, 1, 2, 5, 10, 20, 50, 100]
+    tie_threshold_values = [0.0, *np.geomspace(1, 1000, 61)]
+    displayed_threshold_indices = [0, *range(1, len(tie_threshold_values), 10)]
+    print(
+        f"  Searching {len(p_values)} P values and "
+        f"{len(tie_threshold_values)} tie thresholds "
+        f"({len(p_values) * len(tie_threshold_values):,} settings)"
+    )
 
-    # A setting has to beat always predicting a tie, the most common outcome
-    best_p, best_tie_threshold = None, None
-    best_val_acc = compute_baseline_accuracy(val_rows, Outcome.TIE)
-    print(f"  Always predicting tie: {best_val_acc:.2%}")
+    # Track the best grid setting separately from the always-tie baseline
+    val_acc_always_tie = compute_baseline_accuracy(val_rows, Outcome.TIE)
+    best_p_no_threshold = p_values[0]
+    best_val_acc_no_threshold = -1.0
+    best_p, best_tie_threshold = p_values[0], tie_threshold_values[0]
+    best_val_acc = -1.0
+    print(f"  Always predicting tie: {val_acc_always_tie:.2%}")
 
-    # One row per P, one column per tie_threshold
-    print("  Validation accuracy by P (rows) and tie_threshold (columns):")
-    print("     P" + "".join(f"{t:>7}" for t in tie_threshold_values))
+    # One row per P, with selected thresholds from the full search grid
+    print("  Validation accuracy by P (rows) and selected tie_thresholds (columns):")
+    print(
+        "     P"
+        + "".join(
+            f"{tie_threshold_values[i]:7.4g}" for i in displayed_threshold_indices
+        )
+    )
 
     for p in p_values:
         row_accs = []
@@ -90,62 +110,101 @@ def run_experiment(
             )
             val_acc = compute_accuracy(router, val_rows, val_emb)
             row_accs.append(val_acc)
+            if tie_threshold == 0 and val_acc > best_val_acc_no_threshold:
+                best_p_no_threshold, best_val_acc_no_threshold = p, val_acc
             if val_acc > best_val_acc:
                 best_p, best_tie_threshold, best_val_acc = p, tie_threshold, val_acc
-        print(f"  {p:4.2f}" + "".join(f"{acc:7.1%}" for acc in row_accs))
+        print(
+            f"  {p:4.2f}"
+            + "".join(f"{row_accs[i]:7.1%}" for i in displayed_threshold_indices)
+        )
 
-    if best_p is None:
+    print(f"  Best P with no tie threshold: {best_p_no_threshold:.2f}")
+    print(f"  Validation accuracy (no tie threshold): {best_val_acc_no_threshold:.2%}")
+    print(
+        f"  Best P and tie_threshold: P={best_p:.2f}, "
+        f"tie_threshold={best_tie_threshold:.6g}"
+    )
+    print(f"  Validation accuracy (P and tie_threshold): {best_val_acc:.2%}")
+    if best_val_acc <= val_acc_always_tie:
         print("  No setting beat always predicting a tie")
-    else:
-        print(f"  Best P: {best_p:.2f}, tie_threshold: {best_tie_threshold}")
-        print(f"  Validation accuracy: {best_val_acc:.2%}")
 
     # -------------------------------------------------------------------------
     # 5. Evaluate on test set
     # -------------------------------------------------------------------------
-    print("\nEvaluating on test set...")
+    print("\nEvaluating on SPROUT test set...")
 
     # Baseline: always predict a tie, the most common outcome
     test_acc_always_tie = compute_baseline_accuracy(test_rows, Outcome.TIE)
     print(f"  Always predicting tie: {test_acc_always_tie:.2%}")
 
-    # With paper hyperparams (no tie_threshold in paper)
+    # With paper hyperparams, evaluated here on SPROUT
     router_paper = EagleRouter(
-        global_ratings, train_index, k=DEFAULT_K, n_neighbors=DEFAULT_N, p=DEFAULT_P
+        global_ratings,
+        train_index,
+        k=DEFAULT_K,
+        n_neighbors=DEFAULT_N,
+        p=DEFAULT_P,
+        tie_threshold=0,
     )
     test_acc_paper = compute_accuracy(router_paper, test_rows, test_emb)
-    print(f"  Paper P={DEFAULT_P}: {test_acc_paper:.2%}")
+    print(f"  Paper P={DEFAULT_P}, no tie threshold: {test_acc_paper:.2%}")
 
-    # With tuned hyperparams, if any beat the baseline on validation
-    if best_p is not None:
-        router_tuned = EagleRouter(
-            global_ratings,
-            train_index,
-            k=DEFAULT_K,
-            n_neighbors=DEFAULT_N,
-            p=best_p,
-            tie_threshold=best_tie_threshold,
-        )
-        test_acc_tuned = compute_accuracy(router_tuned, test_rows, test_emb)
-        print(
-            f"  Tuned P={best_p:.2f}, tie_threshold={best_tie_threshold}: "
-            f"{test_acc_tuned:.2%}"
-        )
+    # With P selected on validation and no tie threshold
+    router_tuned_no_threshold = EagleRouter(
+        global_ratings,
+        train_index,
+        k=DEFAULT_K,
+        n_neighbors=DEFAULT_N,
+        p=best_p_no_threshold,
+        tie_threshold=0,
+    )
+    test_acc_tuned_no_threshold = compute_accuracy(
+        router_tuned_no_threshold, test_rows, test_emb
+    )
+    print(
+        f"  Tuned P={best_p_no_threshold:.2f}, no tie threshold: "
+        f"{test_acc_tuned_no_threshold:.2%}"
+    )
+
+    # With the best hyperparams from validation
+    router_tuned = EagleRouter(
+        global_ratings,
+        train_index,
+        k=DEFAULT_K,
+        n_neighbors=DEFAULT_N,
+        p=best_p,
+        tie_threshold=best_tie_threshold,
+    )
+    test_acc_tuned = compute_accuracy(router_tuned, test_rows, test_emb)
+    print(
+        f"  Tuned P={best_p:.2f}, tie_threshold={best_tie_threshold:.6g}: "
+        f"{test_acc_tuned:.2%}"
+    )
 
     # -------------------------------------------------------------------------
     # Results summary
     # -------------------------------------------------------------------------
     print("\n" + "=" * 40)
-    print("RESULTS")
+    print("RESULTS (SPROUT)")
     print("=" * 40)
     print(f"Test accuracy (always tie): {test_acc_always_tie:.2%}")
-    print(f"Test accuracy (paper P={DEFAULT_P}): {test_acc_paper:.2%}")
-    if best_p is None:
-        print("Tuned: no setting beat always predicting a tie on validation")
-    else:
-        print(f"Tuned P: {best_p:.2f}, tie_threshold: {best_tie_threshold}")
-        print(f"Validation accuracy: {best_val_acc:.2%}")
-        print(f"Test accuracy (tuned): {test_acc_tuned:.2%}")
+    print(
+        f"Test accuracy (paper P={DEFAULT_P}, no tie threshold): {test_acc_paper:.2%}"
+    )
+    print(f"Tuned P with no tie threshold: {best_p_no_threshold:.2f}")
+    print(f"Validation accuracy (no tie threshold): {best_val_acc_no_threshold:.2%}")
+    print(
+        f"Test accuracy (tuned P, no tie threshold): {test_acc_tuned_no_threshold:.2%}"
+    )
+    print(
+        f"Tuned P and tie_threshold: P={best_p:.2f}, "
+        f"tie_threshold={best_tie_threshold:.6g}"
+    )
+    print(f"Validation accuracy (P and tie_threshold): {best_val_acc:.2%}")
+    print(f"Test accuracy (tuned P and tie_threshold): {test_acc_tuned:.2%}")
+    if best_val_acc <= val_acc_always_tie:
+        print("No setting beat always predicting a tie on validation")
 
 
 if __name__ == "__main__":
@@ -157,5 +216,22 @@ if __name__ == "__main__":
         default="qwen",
         help="Embedding backend (default: qwen, runs locally).",
     )
+    parser.add_argument(
+        "--train-n",
+        type=int,
+        default=1200,
+        help="Training sample size (default: 1200).",
+    )
+    parser.add_argument(
+        "--val-n", type=int, default=600, help="Validation sample size (default: 600)."
+    )
+    parser.add_argument(
+        "--test-n", type=int, default=600, help="Test sample size (default: 600)."
+    )
     args = parser.parse_args()
-    run_experiment(embedding_backend=args.embedding_backend)
+    run_experiment(
+        embedding_backend=args.embedding_backend,
+        train_n=args.train_n,
+        val_n=args.val_n,
+        test_n=args.test_n,
+    )

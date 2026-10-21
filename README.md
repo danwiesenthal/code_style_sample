@@ -34,11 +34,11 @@ Embeddings come from [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Em
 
 Start with `main.py` - it runs the full experiment:
 
-1. Loads SPROUT and samples 2000 train, 200 val, and 200 test rows, to keep embedding time short
+1. Loads SPROUT and samples 1200 train, 600 val, and 600 test rows by default, to keep embedding time short
 2. Embeds prompts using Qwen3-Embedding-0.6B (or OpenAI text-embedding-3-large)
 3. Builds the EAGLE router from training data
-4. Tunes P and tie_threshold on the validation set
-5. Reports test accuracy, next to the accuracy of always predicting a tie
+4. Tunes P with no tie threshold, then tunes P and tie_threshold together on the validation set
+5. Reports test accuracy for the paper settings, both tuned variants, and always predicting a tie
 
 Supporting modules:
 - `router.py` - EAGLE router combining global and local Elo ratings
@@ -60,73 +60,92 @@ Supporting modules:
 
 ## Extension: Tie Threshold
 
-The paper's router always picks whichever model has the higher combined rating, so it never predicts a tie. On SPROUT, gpt-4o and gpt-4o-mini score the same on about 78% of prompts, and each of those ties counts as a miss.
+The paper's router selects a model rather than predicting a tie. On SPROUT, gpt-4o and gpt-4o-mini receive the same recorded score on about 78% of prompts. Under this repo's exact-outcome metric, predicting either model as the winner counts as a miss on those prompts.
 
-This repo extends the paper with a `tie_threshold` parameter, which predicts TIE when the rating difference is within the threshold. The default of 0 matches the paper's behavior, and `main.py` tunes it alongside P on the validation set. Tuning only keeps a setting if it beats always predicting a tie on the validation set.
+This repo extends the paper with a `tie_threshold` parameter, which predicts TIE when the rating difference is within the threshold. At 0, the router picks the higher-rated model unless the ratings are exactly equal. `main.py` tunes P with the threshold fixed at 0, then tunes both together. Each variant reports its best validation setting alongside always predicting a tie, even when it does not beat that baseline.
+
+The search uses 21 evenly spaced P values and zero plus 61 logarithmically spaced thresholds from 1 to 1000. The output displays selected threshold columns; all 62 thresholds are evaluated.
 
 ## Results
 
-On SPROUT, with 2000 train, 200 validation and 200 test prompts and Qwen embeddings:
+The experiment uses 1200 train, 600 validation and 600 test prompts from SPROUT, with Qwen3-Embedding-0.6B embeddings and seed 42. Each sample comes from its corresponding official dataset split; tuning uses only validation outcomes.
 
 | Router | Test accuracy |
 |---|---|
-| Always predict a tie | 78.5% |
-| Paper settings (P=0.5, no tie threshold) | 12.5% |
+| Paper settings on SPROUT (P=0.5, no tie threshold) | 13.8% |
+| Tuned P with no tie threshold (P=0.00) | 15.5% |
+| Tuned P and tie_threshold (P=0.10, tie_threshold=79.4328) | 74.3% |
+| Always predict a tie | 74.7% |
 
-The paper's settings almost never predict a tie, so they can only be right on the prompts where one model wins. No combination of P and tie_threshold beat always predicting a tie on the validation set, so on this data the router doesn't improve on that baseline.
+The paper evaluates model selection on RouterBench by quality-versus-cost AUC. Its fixed settings are P=0.5, 20 neighbors and K=32 ([Appendix A](https://arxiv.org/html/2409.15518v2#A1)). The first row applies those settings here on SPROUT; it is not the paper's published result. All rows above measure exact outcome accuracy: A wins, B wins, or tie.
 
-Accuracy here counts exact outcomes. A router that only has to pick a model could count a tie and a gpt-4o-mini win the same, since either way the cheaper model is good enough.
+Without a tie threshold, tuning P improves test accuracy from 13.8% to 15.5%. Once tie predictions are allowed, tuning selects P=0.10 and tie_threshold=79.4328: it gets 467 of 600 validation outcomes right, versus 465 for always predicting a tie (77.8% versus 77.5%). On test, that small advantage reverses: the tuned router gets 446 of 600 right, versus 448 for always predicting a tie (74.3% versus 74.7%).
+
+The strong always-tie baseline reflects how similar these two models' recorded scores are on this dataset: they tie on 448 of the 600 test prompts. Allowing TIE as an answer makes that common outcome easy to predict. This result does not establish that EAGLE is broken or that routing is unhelpful for other model pairs or datasets. It shows that these tuned settings do not beat the tie baseline on this sample under exact-outcome accuracy.
+
+A router that only has to choose a model has a different objective. On a tied prompt, choosing gpt-4o-mini preserves the recorded score at lower cost, even though predicting "B wins" would be wrong under this metric.
 
 Example output from `uv run python main.py`:
 
 ```text
 Loading and sampling data...
-  Train: 2000, Val: 200, Test: 200
-  Train outcomes: {<Outcome.TIE: 'tie'>: 1568, <Outcome.WIN_B: 'win_b'>: 179, <Outcome.WIN_A: 'win_a'>: 253}
+  Train: 1200, Val: 600, Test: 600
+  Train outcomes: {<Outcome.TIE: 'tie'>: 953, <Outcome.WIN_B: 'win_b'>: 98, <Outcome.WIN_A: 'win_a'>: 149}
 
 Embedding prompts with Qwen/Qwen3-Embedding-0.6B...
   Embedding dim: 1024
 
 Building router...
-  Global ratings: A=1504.93, B=1495.07
+  Global ratings: A=1486.95, B=1513.05
 
 Tuning P and tie_threshold on validation set...
-  Always predicting tie: 74.50%
-  Validation accuracy by P (rows) and tie_threshold (columns):
-     P      0      1      2      5     10     20     50    100
-  0.00  10.5%  12.0%  14.5%  17.0%  25.0%  38.0%  65.5%  72.0%
-  0.05  10.5%  11.5%  14.5%  16.5%  25.5%  39.5%  65.5%  73.0%
-  0.10  10.5%  11.0%  13.0%  17.0%  27.0%  40.0%  66.0%  74.0%
-  0.15  11.0%  11.5%  12.5%  18.0%  27.5%  40.5%  68.0%  74.0%
-  0.20  11.0%  12.0%  12.0%  19.0%  28.0%  41.5%  69.0%  74.0%
-  0.25  11.5%  11.5%  12.0%  19.5%  28.5%  42.5%  70.0%  74.5%
-  0.30  11.5%  11.5%  12.5%  20.5%  29.0%  43.5%  69.5%  74.5%
-  0.35  11.5%  12.5%  14.0%  21.5%  29.5%  44.5%  70.0%  74.5%
-  0.40  11.5%  14.0%  15.5%  22.0%  30.5%  50.5%  70.0%  74.5%
-  0.45  12.5%  15.0%  16.0%  21.0%  31.5%  54.5%  71.0%  74.5%
-  0.50  12.5%  14.0%  18.0%  20.5%  32.0%  55.5%  72.0%  74.5%
-  0.55  13.0%  15.0%  17.5%  21.5%  33.0%  58.0%  72.5%  74.5%
-  0.60  13.5%  15.0%  17.0%  22.0%  37.5%  61.0%  74.0%  74.5%
-  0.65  12.5%  15.5%  16.5%  23.5%  39.0%  62.5%  74.0%  74.5%
-  0.70  13.0%  15.5%  16.0%  27.5%  40.5%  63.5%  74.5%  74.5%
-  0.75  13.0%  15.5%  17.5%  27.5%  42.0%  66.5%  74.5%  74.5%
-  0.80  13.5%  19.0%  21.0%  26.5%  41.5%  69.0%  74.5%  74.5%
-  0.85  14.0%  15.5%  17.5%  23.5%  42.5%  71.0%  74.5%  74.5%
-  0.90  13.5%  13.5%  14.0%  19.5%  42.5%  74.0%  74.5%  74.5%
-  0.95  13.5%  13.5%  13.5%  14.0%  45.0%  74.5%  74.5%  74.5%
-  1.00  13.5%  13.5%  13.5%  13.5%  74.5%  74.5%  74.5%  74.5%
-  No setting beat always predicting a tie
+  Searching 21 P values and 62 tie thresholds (1,302 settings)
+  Always predicting tie: 77.50%
+  Validation accuracy by P (rows) and selected tie_thresholds (columns):
+     P      0      1  3.162     10  31.62    100  316.2   1000
+  0.00  11.8%  13.0%  14.3%  26.7%  57.7%  77.7%  77.5%  77.5%
+  0.05  11.8%  11.8%  16.0%  26.7%  59.3%  77.7%  77.5%  77.5%
+  0.10  11.3%  13.2%  15.3%  28.5%  61.2%  77.5%  77.5%  77.5%
+  0.15  11.3%  13.8%  16.5%  29.7%  62.8%  77.3%  77.5%  77.5%
+  0.20  11.2%  12.7%  18.5%  32.8%  63.7%  77.5%  77.5%  77.5%
+  0.25  11.3%  14.0%  18.2%  34.5%  65.8%  77.5%  77.5%  77.5%
+  0.30  11.2%  13.3%  19.2%  35.7%  68.2%  77.5%  77.5%  77.5%
+  0.35  10.7%  13.5%  20.7%  37.7%  68.8%  77.5%  77.5%  77.5%
+  0.40  10.7%  14.7%  22.7%  38.3%  70.2%  77.5%  77.5%  77.5%
+  0.45  10.7%  15.0%  22.8%  40.7%  72.0%  77.5%  77.5%  77.5%
+  0.50  11.0%  14.5%  22.0%  39.5%  73.7%  77.5%  77.5%  77.5%
+  0.55  11.3%  13.3%  19.2%  39.2%  74.0%  77.5%  77.5%  77.5%
+  0.60  11.2%  13.2%  17.7%  36.8%  74.3%  77.5%  77.5%  77.5%
+  0.65  10.8%  12.5%  16.5%  33.3%  74.8%  77.5%  77.5%  77.5%
+  0.70  10.3%  11.7%  15.3%  27.5%  75.3%  77.5%  77.5%  77.5%
+  0.75  10.0%  11.2%  13.8%  21.3%  75.7%  77.5%  77.5%  77.5%
+  0.80   9.7%   9.7%  10.0%  15.2%  75.8%  77.5%  77.5%  77.5%
+  0.85   9.0%   9.0%   9.0%  11.0%  76.3%  77.5%  77.5%  77.5%
+  0.90   9.0%   9.0%   9.0%   9.0%  77.3%  77.5%  77.5%  77.5%
+  0.95   9.0%   9.0%   9.0%   9.0%  77.5%  77.5%  77.5%  77.5%
+  1.00   9.0%   9.0%   9.0%   9.0%  77.5%  77.5%  77.5%  77.5%
+  Best P with no tie threshold: 0.00
+  Validation accuracy (no tie threshold): 11.83%
+  Best P and tie_threshold: P=0.10, tie_threshold=79.4328
+  Validation accuracy (P and tie_threshold): 77.83%
 
-Evaluating on test set...
-  Always predicting tie: 78.50%
-  Paper P=0.5: 12.50%
+Evaluating on SPROUT test set...
+  Always predicting tie: 74.67%
+  Paper P=0.5, no tie threshold: 13.83%
+  Tuned P=0.00, no tie threshold: 15.50%
+  Tuned P=0.10, tie_threshold=79.4328: 74.33%
 
 ========================================
-RESULTS
+RESULTS (SPROUT)
 ========================================
-Test accuracy (always tie): 78.50%
-Test accuracy (paper P=0.5): 12.50%
-Tuned: no setting beat always predicting a tie on validation
+Test accuracy (always tie): 74.67%
+Test accuracy (paper P=0.5, no tie threshold): 13.83%
+Tuned P with no tie threshold: 0.00
+Validation accuracy (no tie threshold): 11.83%
+Test accuracy (tuned P, no tie threshold): 15.50%
+Tuned P and tie_threshold: P=0.10, tie_threshold=79.4328
+Validation accuracy (P and tie_threshold): 77.83%
+Test accuracy (tuned P and tie_threshold): 74.33%
 ```
 
 ## License
