@@ -30,7 +30,8 @@ def run_experiment(
         2. Embed all prompts
         3. Build router from training data
         4. Tune P and tie_threshold on validation set
-        5. Report test accuracy with paper P and tuned hyperparams
+        5. Report test accuracy for always predicting a tie, paper P, and tuned
+           settings if any beat that baseline
     """
 
     # -------------------------------------------------------------------------

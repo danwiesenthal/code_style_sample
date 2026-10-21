@@ -45,7 +45,7 @@ class TestUpdateRatings:
         assert new.b == 100.0
 
     def test_should_be_zero_sum(self):
-        """Should transfer points symmetrically (winner gains = loser loses)."""
+        """Should be zero-sum: A's rating gain equals B's rating loss."""
         old_a, old_b = 150.0, 120.0
         new = update_ratings(RatingPair(old_a, old_b), Outcome.WIN_A, k=32)
 

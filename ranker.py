@@ -1,6 +1,6 @@
 """Ranker module for computing Elo ratings from match sequences."""
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from elo import RatingPair, update_ratings
 from match_types import MatchRow
