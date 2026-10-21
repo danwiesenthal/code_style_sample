@@ -38,5 +38,6 @@ class TestMatchRow:
         """Should raise when a field is changed after the match row is created."""
         match_row = _match_row_with_scores(1.0, 0.0)
 
+        # ty flags this assignment too; the test checks it also fails at runtime
         with pytest.raises(dataclasses.FrozenInstanceError):
-            match_row.score_a = 0.0
+            match_row.score_a = 0.0  # ty: ignore[invalid-assignment]

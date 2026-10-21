@@ -1,0 +1,35 @@
+# Lint, type-check and run the unit tests on every push. Integration tests are
+# skipped, since they download data and models (see pyproject.toml).
+version: 2.1
+
+jobs:
+  check:
+    docker:
+      - image: cimg/python:3.14
+    steps:
+      - checkout
+      - run:
+          name: Install uv
+          command: pip install uv==0.13.4
+      - run:
+          # Fails if uv.lock is out of date with pyproject.toml. This is the
+          # slowest step: on Linux, torch brings several GB of CUDA packages.
+          name: Install dependencies
+          command: uv sync --locked
+      - run:
+          name: Lint
+          command: uv run ruff check .
+      - run:
+          name: Check formatting
+          command: uv run ruff format --check .
+      - run:
+          name: Type check
+          command: uv run ty check
+      - run:
+          name: Unit tests
+          command: uv run pytest
+
+workflows:
+  check:
+    jobs:
+      - check

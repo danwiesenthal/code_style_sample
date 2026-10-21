@@ -1,7 +1,9 @@
 [project]
 name = "eagle-router"
 version = "0.1.0"
-requires-python = ">=3.11"
+description = "Code style sample: a small, tested Python implementation of the EAGLE LLM router (Elo ratings plus embedding nearest neighbors)."
+readme = "README.md"
+requires-python = ">=3.14"
 dependencies = [
     "datasets>=2.14.0",
     "numpy>=1.24.0",
@@ -13,11 +15,17 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest>=7.0.0",
-    "ruff>=0.14.10",
+    "pre-commit>=4.7.0",
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+    "ty>=0.0.90",
 ]
 
-[tool.pytest.ini_options]
+[tool.pytest]
+testpaths = ["tests"]
+# Unit tests only by default; pass -m to run integration tests
+addopts = ["-m", "not integration"]
+strict = true
 markers = [
     "integration: calls an external service (HuggingFace or OpenAI)",
     "openai: calls the paid OpenAI API (needs OPENAI_API_KEY)",

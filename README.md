@@ -18,15 +18,21 @@ uv sync
 uv run python main.py
 
 # Run unit tests (skips integration tests, which download data and models)
-uv run pytest tests/ -v -m "not integration"
+uv run pytest
 
 # Run integration tests, except ones that call the paid OpenAI API
-uv run pytest tests/ -v -m "integration and not openai"
+uv run pytest -m "integration and not openai"
 
-# Lint and check formatting
+# Lint, check formatting and type-check
 uv run ruff check .
 uv run ruff format --check .
+uv run ty check
+
+# Run ruff on every commit
+uv run pre-commit install
 ```
+
+`.circleci/config.yml` runs the same lint, format, type and unit-test checks on CircleCI.
 
 Embeddings come from [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B), which runs locally and downloads on first use. To use OpenAI's text-embedding-3-large instead, add `OPENAI_API_KEY` to a `.env` file and run `uv run python main.py --embedding-backend openai`.
 

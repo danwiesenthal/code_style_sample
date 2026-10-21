@@ -1,0 +1,19 @@
+# Install with: uv run pre-commit install
+#
+# The hooks run ruff from the project environment that uv sync sets up, so
+# they use the version pinned in uv.lock. --no-sync keeps them from changing
+# that environment on each commit. "unsupported" means pre-commit doesn't set
+# up an environment of its own for them.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --no-sync ruff check --fix
+        language: unsupported
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --no-sync ruff format
+        language: unsupported
+        types_or: [python, pyi]
